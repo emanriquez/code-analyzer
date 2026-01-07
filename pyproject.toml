@@ -15,7 +15,7 @@ dependencies = [
     "requests>=2.28.0",
     "openai>=1.0.0",
     "google-generativeai>=0.3.0",
-    "tomli>=2.0.0; python_version < '3.11'",  # tomllib is built-in in Python 3.11+
+    "tomli>=2.0.0; python_version < '3.11'",
 ]
 
 [project.scripts]
@@ -23,4 +23,8 @@ repo-analyzer = "repo_analyzer.cli:main"
 
 [tool.setuptools]
 packages = ["repo_analyzer"]
+
+[tool.setuptools.package-data]
+"*" = ["*.md", "*.txt", "*.json"]
+
 
