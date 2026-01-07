@@ -3,16 +3,18 @@
 import json
 import os
 import hashlib
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import git
 
 from .metrics_collector import MetricsCollector
 from .security_analyzer import SecurityAnalyzer
 from .quality_analyzer import QualityAnalyzer
 from .ai_doc_generator import AIDocGenerator
+from .scoring_system import ScoringSystem
 
 
 class EvidenceGenerator:
@@ -32,7 +34,9 @@ class EvidenceGenerator:
     
     def generate(self, stack_info: Dict, deps_info: Dict, repo_facts: Dict, 
                  security_info: Optional[Dict] = None, quality_info: Optional[Dict] = None,
-                 metrics: Optional[Dict] = None, summary: Optional[Dict] = None) -> Dict[str, str]:
+                 metrics: Optional[Dict] = None, summary: Optional[Dict] = None,
+                 repo_name: Optional[str] = None, commit_sha: Optional[str] = None,
+                 metrica_config_path: Optional[str] = None) -> Dict[str, str]:
         """Generate complete evidence pack"""
         generated_files = {}
         
@@ -107,7 +111,7 @@ class EvidenceGenerator:
             # Generate empty security report if no analysis was performed
             security_path = self.output_dir / "security" / "deps-sca.json"
             empty_security = {
-                "scan_timestamp": datetime.utcnow().isoformat() + "Z",
+                "scan_timestamp": datetime.now(timezone.utc).isoformat(),
                 "note": "Security analysis not performed. Install security scanners (npm audit, safety, snyk, etc.)",
                 "vulnerabilities": [],
                 "summary": {
@@ -257,6 +261,35 @@ class EvidenceGenerator:
                 # Fallback to basic documentation if AI fails
                 pass  # Errors are handled by fallback generation
         
+        # Copy original README from repo to docs/ if it exists
+        original_readme_paths = [
+            self.repo_path / "README.md",
+            self.repo_path / "readme.md",
+            self.repo_path / "README.txt",
+            self.repo_path / "README.rst",
+        ]
+        
+        for original_readme_path in original_readme_paths:
+            if original_readme_path.exists() and original_readme_path.is_file():
+                try:
+                    # Copy original README to docs/
+                    docs_readme_path = self.output_dir / "docs" / "README.md"
+                    shutil.copy2(original_readme_path, docs_readme_path)
+                    generated_files["docs/README.md"] = str(docs_readme_path)
+                    break  # Only copy the first one found
+                except Exception:
+                    # If copy fails, try to read and write instead
+                    try:
+                        with open(original_readme_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            content = f.read()
+                        docs_readme_path = self.output_dir / "docs" / "README.md"
+                        with open(docs_readme_path, 'w', encoding='utf-8') as f:
+                            f.write(content)
+                        generated_files["docs/README.md"] = str(docs_readme_path)
+                        break
+                    except Exception:
+                        continue
+        
         # Fallback to basic documentation if AI not available or failed
         if "docs/README.enriched.md" not in generated_files:
             readme_path = self.output_dir / "docs" / "README.enriched.md"
@@ -289,6 +322,62 @@ class EvidenceGenerator:
                 f.write("@startuml\n# Sequence Diagram\n\n*Generate with AI token (OpenAI/Gemini) to create diagram*\n@enduml\n")
             generated_files["diagrams/sequence.puml"] = str(sequence_path)
         
+        # Generate scoring/scores (calculate all 7 dimensions based on metrica.json)
+        try:
+            # Load stack_info, repo_facts, and metrics for intelligent scoring
+            stack_info_data = {}
+            repo_facts_data = {}
+            metrics_data = {}
+            
+            # Try to load summary.json for stack_info
+            summary_file = self.output_dir / "summary.json"
+            if summary_file.exists():
+                try:
+                    with open(summary_file, 'r') as f:
+                        summary_data = json.load(f)
+                        stack_info_data = summary_data.get("tech_stack", {})
+                except:
+                    pass
+            
+            # Load repo_facts.json
+            facts_file = self.output_dir / "repo_facts.json"
+            if facts_file.exists():
+                try:
+                    with open(facts_file, 'r') as f:
+                        repo_facts_data = json.load(f)
+                except:
+                    pass
+            
+            # Load metrics/cloc.json
+            metrics_file = self.output_dir / "metrics" / "cloc.json"
+            if metrics_file.exists():
+                try:
+                    with open(metrics_file, 'r') as f:
+                        metrics_data = json.load(f)
+                except:
+                    pass
+            
+            scoring_system = ScoringSystem(
+                str(self.output_dir),
+                metrica_config_path=metrica_config_path,
+                stack_info=stack_info_data,
+                repo_facts=repo_facts_data,
+                metrics=metrics_data
+            )
+            
+            repo_name_value = repo_name or repo_facts.get("name", "unknown")
+            commit_sha_value = commit_sha or repo_facts.get("commit_sha", "unknown")
+            
+            scores = scoring_system.calculate_scores(repo_name_value, commit_sha_value)
+            
+            score_path = self.output_dir / "score.json"
+            with open(score_path, 'w', encoding='utf-8') as f:
+                json.dump(scores, f, indent=2)
+            generated_files["score.json"] = str(score_path)
+        except Exception as e:
+            # If scoring fails, continue without it
+            pass
+        
         # Generate checksums
         checksums = self._generate_checksums()
         checksums_path = self.output_dir / "SHA256SUMS"
@@ -302,7 +391,7 @@ class EvidenceGenerator:
     def _generate_summary(self, stack_info: Dict, deps_info: Dict, repo_facts: Dict) -> Dict[str, Any]:
         """Generate summary.json"""
         return {
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "repository": {
                 "name": repo_facts.get("name", "unknown"),
                 "url": repo_facts.get("url", ""),
@@ -383,14 +472,14 @@ class EvidenceGenerator:
         """Generate build information"""
         return {
             "build_id": os.environ.get("BUILD_BUILDID", "local"),
-            "build_time": datetime.utcnow().isoformat() + "Z",
+            "build_time": datetime.now(timezone.utc).isoformat(),
             "ci_cd": os.environ.get("SYSTEM_TEAMFOUNDATIONCOLLECTIONURI", "local"),
         }
     
     def _generate_enriched_readme(self, stack_info: Dict, deps_info: Dict, repo_facts: Dict) -> str:
         """Generate enriched README"""
         md = f"# {repo_facts.get('name', 'Repository')}\n\n"
-        md += f"**Generated:** {datetime.utcnow().isoformat()}\n\n"
+        md += f"**Generated:** {datetime.now(timezone.utc).isoformat()}\n\n"
         
         md += "## Tech Stack\n\n"
         md += f"- **Primary Language:** {stack_info.get('primary_language', 'Unknown')}\n"

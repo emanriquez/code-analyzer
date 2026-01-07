@@ -3,9 +3,11 @@
 import json
 import subprocess
 import os
+import sys
+import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import requests
 
 
@@ -40,7 +42,7 @@ class SecurityAnalyzer:
         self._debug(f"Starting security analysis for repo: {self.repo_path}")
         
         result = {
-            "scan_timestamp": datetime.utcnow().isoformat() + "Z",
+            "scan_timestamp": datetime.now(timezone.utc).isoformat(),
             "package_manager": deps_info.get("package_manager"),
             "vulnerabilities": [],
             "summary": {
@@ -201,25 +203,10 @@ class SecurityAnalyzer:
             # Set Snyk token as environment variable
             env = os.environ.copy()
             env['SNYK_TOKEN'] = self.snyk_token
-            self._debug(f"Snyk token configured (length: {len(self.snyk_token)})")
             
-            # Check if snyk command exists
-            self._debug("Checking if snyk command is available...")
-            check_result = subprocess.run(
-                ['which', 'snyk'],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            if check_result.returncode != 0:
-                self._debug("snyk command not found in PATH")
-                return None
-            self._debug(f"snyk command found at: {check_result.stdout.strip()}")
-            
-            # Run Snyk Code test - analyzes source code for vulnerabilities
+            # Run Snyk Code test directly - simple and fast
             # Snyk Code supports: JavaScript, TypeScript, Python, Java, C#, Go, PHP, Ruby, etc.
             self._debug(f"Running snyk code test in directory: {self.repo_path}")
-            self._debug("This may take up to 10 minutes (600 seconds timeout)...")
             
             result = subprocess.run(
                 ['snyk', 'code', 'test', '--json'],

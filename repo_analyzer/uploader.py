@@ -5,7 +5,7 @@ import zipfile
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 import requests
 from urllib.parse import urljoin, urlparse
 
@@ -76,7 +76,7 @@ class EvidenceUploader:
                 data = {
                     'repo_name': repo_name,
                     'commit_sha': commit_sha,
-                    'uploaded_at': datetime.utcnow().isoformat() + 'Z',
+                    'uploaded_at': datetime.now(timezone.utc).isoformat(),
                 }
                 
                 response = requests.post(

@@ -6,7 +6,7 @@ import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class QualityAnalyzer:
@@ -21,7 +21,7 @@ class QualityAnalyzer:
             "test_results": None,
             "coverage": None,
             "test_framework": None,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         
         primary_lang = stack_info.get("primary_language", "").lower()

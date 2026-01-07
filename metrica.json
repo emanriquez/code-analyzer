@@ -1,0 +1,437 @@
+{
+    "scoring_model": {
+      "name": "VC-Ready Engineering Score",
+      "version": "1.0.0",
+      "scale": { "min": 0, "max": 100 },
+      "final_score_weights": {
+        "velocity": 0.2,
+        "stability": 0.15,
+        "scalability": 0.15,
+        "security": 0.15,
+        "maintainability": 0.15,
+        "bus_factor": 0.1,
+        "governance": 0.1
+      },
+      "dimensions": [
+        {
+          "key": "velocity",
+          "label": "Velocity",
+          "description": "Speed of delivering value safely into production.",
+          "dimension_weight": 0.2,
+          "metrics": [
+            {
+              "key": "deploys_per_month",
+              "label": "Deploys per month",
+              "unit": "count",
+              "metric_weight": 0.3,
+              "source": { "path": "build/deploy_history.json", "field": "deploys_last_30d" },
+              "normalization": {
+                "type": "thresholds",
+                "direction": "higher_is_better",
+                "thresholds": [
+                  { "lte": 0, "score": 0 },
+                  { "lte": 1, "score": 20 },
+                  { "lte": 4, "score": 60 },
+                  { "gte": 10, "score": 100 }
+                ],
+                "interpolate_between_points": true
+              }
+            },
+            {
+              "key": "lead_time_pr_to_prod_hours",
+              "label": "Lead time PR → Production",
+              "unit": "hours",
+              "metric_weight": 0.4,
+              "source": { "path": "change/flow_metrics.json", "field": "median_pr_to_prod_hours" },
+              "normalization": {
+                "type": "thresholds",
+                "direction": "lower_is_better",
+                "thresholds": [
+                  { "gte": 168, "score": 0 },
+                  { "gte": 72, "score": 30 },
+                  { "lte": 24, "score": 80 },
+                  { "lte": 6, "score": 100 }
+                ],
+                "interpolate_between_points": true
+              }
+            },
+            {
+              "key": "features_shipped_per_month",
+              "label": "Features shipped per month",
+              "unit": "count",
+              "metric_weight": 0.3,
+              "source": { "path": "change/release_notes.json", "field": "features_last_30d" },
+              "normalization": {
+                "type": "thresholds",
+                "direction": "higher_is_better",
+                "thresholds": [
+                  { "lte": 0, "score": 0 },
+                  { "lte": 2, "score": 40 },
+                  { "lte": 6, "score": 80 },
+                  { "gte": 12, "score": 100 }
+                ],
+                "interpolate_between_points": true
+              }
+            }
+          ]
+        },
+        {
+          "key": "stability",
+          "label": "Stability",
+          "description": "Reliability of changes and speed of recovery after failures.",
+          "dimension_weight": 0.15,
+          "metrics": [
+            {
+              "key": "change_failure_rate_pct",
+              "label": "Change Failure Rate",
+              "unit": "percent",
+              "metric_weight": 0.4,
+              "source": { "path": "build/ops_metrics.json", "field": "change_failure_rate_pct" },
+              "normalization": {
+                "type": "thresholds",
+                "direction": "lower_is_better",
+                "thresholds": [
+                  { "gte": 30, "score": 0 },
+                  { "gte": 15, "score": 40 },
+                  { "lte": 5, "score": 80 },
+                  { "lte": 2, "score": 100 }
+                ],
+                "interpolate_between_points": true
+              }
+            },
+            {
+              "key": "mttr_minutes",
+              "label": "Mean Time To Recovery (MTTR)",
+              "unit": "minutes",
+              "metric_weight": 0.4,
+              "source": { "path": "build/ops_metrics.json", "field": "mttr_minutes" },
+              "normalization": {
+                "type": "thresholds",
+                "direction": "lower_is_better",
+                "thresholds": [
+                  { "gte": 1440, "score": 0 },
+                  { "gte": 240, "score": 40 },
+                  { "lte": 60, "score": 80 },
+                  { "lte": 30, "score": 100 }
+                ],
+                "interpolate_between_points": true
+              }
+            },
+            {
+              "key": "prod_incidents_last_30d",
+              "label": "Production incidents (30d)",
+              "unit": "count",
+              "metric_weight": 0.2,
+              "source": { "path": "build/ops_metrics.json", "field": "prod_incidents_last_30d" },
+              "normalization": {
+                "type": "thresholds",
+                "direction": "lower_is_better",
+                "thresholds": [
+                  { "gte": 10, "score": 0 },
+                  { "gte": 5, "score": 40 },
+                  { "lte": 2, "score": 80 },
+                  { "lte": 0, "score": 100 }
+                ],
+                "interpolate_between_points": true
+              }
+            }
+          ]
+        },
+        {
+          "key": "scalability",
+          "label": "Scalability",
+          "description": "Ability to grow with predictable cost and minimal architectural friction.",
+          "dimension_weight": 0.15,
+          "metrics": [
+            {
+              "key": "stateless_services_pct",
+              "label": "Stateless services ratio",
+              "unit": "percent",
+              "metric_weight": 0.3,
+              "source": { "path": "repo_facts.json", "field": "architecture.stateless_services_pct" },
+              "normalization": {
+                "type": "thresholds",
+                "direction": "higher_is_better",
+                "thresholds": [
+                  { "lte": 40, "score": 20 },
+                  { "lte": 70, "score": 60 },
+                  { "lte": 85, "score": 80 },
+                  { "gte": 95, "score": 100 }
+                ],
+                "interpolate_between_points": true
+              }
+            },
+            {
+              "key": "async_processing_present",
+              "label": "Async processing present (queues/workers)",
+              "unit": "boolean",
+              "metric_weight": 0.3,
+              "source": { "path": "repo_facts.json", "field": "architecture.async_processing_present" },
+              "normalization": {
+                "type": "boolean",
+                "true_score": 100,
+                "false_score": 30
+              }
+            },
+            {
+              "key": "autoscaling_configured",
+              "label": "Autoscaling configured",
+              "unit": "boolean",
+              "metric_weight": 0.4,
+              "source": { "path": "manifests/k8s_detected.json", "field": "autoscaling_configured" },
+              "normalization": {
+                "type": "boolean",
+                "true_score": 100,
+                "false_score": 40
+              }
+            }
+          ]
+        },
+        {
+          "key": "security",
+          "label": "Security",
+          "description": "Risk posture for vulnerabilities, secrets, and security practices.",
+          "dimension_weight": 0.15,
+          "metrics": [
+            {
+              "key": "critical_cves_open",
+              "label": "Critical CVEs open",
+              "unit": "count",
+              "metric_weight": 0.4,
+              "source": { "path": "security/deps-sca.json", "field": "critical_open" },
+              "normalization": {
+                "type": "thresholds",
+                "direction": "lower_is_better",
+                "thresholds": [
+                  { "gte": 10, "score": 0 },
+                  { "gte": 5, "score": 30 },
+                  { "lte": 1, "score": 80 },
+                  { "lte": 0, "score": 100 }
+                ],
+                "interpolate_between_points": true
+              }
+            },
+            {
+              "key": "secrets_detected",
+              "label": "Secrets detected in repo",
+              "unit": "count",
+              "metric_weight": 0.3,
+              "source": { "path": "security/secrets.json", "field": "secrets_found" },
+              "normalization": {
+                "type": "thresholds",
+                "direction": "lower_is_better",
+                "thresholds": [
+                  { "gte": 1, "score": 0 },
+                  { "lte": 0, "score": 100 }
+                ],
+                "interpolate_between_points": false
+              }
+            },
+            {
+              "key": "sast_sca_enabled",
+              "label": "SAST/SCA enabled in CI",
+              "unit": "boolean",
+              "metric_weight": 0.3,
+              "source": { "path": "repo_facts.json", "field": "security.sast_sca_enabled" },
+              "normalization": {
+                "type": "boolean",
+                "true_score": 100,
+                "false_score": 40
+              }
+            }
+          ]
+        },
+        {
+          "key": "maintainability",
+          "label": "Maintainability",
+          "description": "Ease of evolving code safely with low friction and low debt.",
+          "dimension_weight": 0.15,
+          "metrics": [
+            {
+              "key": "sonar_maintainability_rating",
+              "label": "Maintainability rating (Sonar)",
+              "unit": "grade",
+              "metric_weight": 0.3,
+              "source": { "path": "quality/sonar.json", "field": "maintainability_rating" },
+              "normalization": {
+                "type": "mapping",
+                "mapping": { "A": 100, "B": 85, "C": 65, "D": 40, "E": 20 }
+              }
+            },
+            {
+              "key": "duplication_pct",
+              "label": "Duplication",
+              "unit": "percent",
+              "metric_weight": 0.3,
+              "source": { "path": "quality/sonar.json", "field": "duplication_pct" },
+              "normalization": {
+                "type": "thresholds",
+                "direction": "lower_is_better",
+                "thresholds": [
+                  { "gte": 20, "score": 20 },
+                  { "gte": 10, "score": 60 },
+                  { "lte": 5, "score": 85 },
+                  { "lte": 2, "score": 100 }
+                ],
+                "interpolate_between_points": true
+              }
+            },
+            {
+              "key": "coverage_core_pct",
+              "label": "Coverage on core modules",
+              "unit": "percent",
+              "metric_weight": 0.4,
+              "source": { "path": "quality/coverage-summary.json", "field": "core_modules_coverage_pct" },
+              "normalization": {
+                "type": "thresholds",
+                "direction": "higher_is_better",
+                "thresholds": [
+                  { "lte": 20, "score": 20 },
+                  { "lte": 40, "score": 50 },
+                  { "lte": 60, "score": 75 },
+                  { "gte": 80, "score": 100 }
+                ],
+                "interpolate_between_points": true
+              }
+            }
+          ]
+        },
+        {
+          "key": "bus_factor",
+          "label": "Bus Factor",
+          "description": "Transferability: how resilient the product is to losing key people.",
+          "dimension_weight": 0.1,
+          "metrics": [
+            {
+              "key": "top1_author_share_pct",
+              "label": "Top 1 author share of commits",
+              "unit": "percent",
+              "metric_weight": 0.4,
+              "source": { "path": "change/commits.json", "field": "contributors.top1_share_pct" },
+              "normalization": {
+                "type": "thresholds",
+                "direction": "lower_is_better",
+                "thresholds": [
+                  { "gte": 80, "score": 10 },
+                  { "gte": 60, "score": 40 },
+                  { "lte": 45, "score": 70 },
+                  { "lte": 30, "score": 100 }
+                ],
+                "interpolate_between_points": true
+              }
+            },
+            {
+              "key": "active_maintainers_count",
+              "label": "Active maintainers (90d)",
+              "unit": "count",
+              "metric_weight": 0.3,
+              "source": { "path": "change/commits.json", "field": "contributors.active_maintainers_90d" },
+              "normalization": {
+                "type": "thresholds",
+                "direction": "higher_is_better",
+                "thresholds": [
+                  { "lte": 1, "score": 10 },
+                  { "lte": 2, "score": 40 },
+                  { "lte": 3, "score": 70 },
+                  { "gte": 5, "score": 100 }
+                ],
+                "interpolate_between_points": true
+              }
+            },
+            {
+              "key": "onboarding_docs_present",
+              "label": "Onboarding docs present",
+              "unit": "boolean",
+              "metric_weight": 0.3,
+              "source": { "path": "docs/README.enriched.md", "field": "exists" },
+              "normalization": {
+                "type": "boolean",
+                "true_score": 100,
+                "false_score": 40
+              }
+            }
+          ]
+        },
+        {
+          "key": "governance",
+          "label": "Governance",
+          "description": "Auditability: change controls, documentation, and evidence per build.",
+          "dimension_weight": 0.1,
+          "metrics": [
+            {
+              "key": "ci_cd_present",
+              "label": "CI/CD configured",
+              "unit": "boolean",
+              "metric_weight": 0.25,
+              "source": { "path": "repo_facts.json", "field": "governance.cicd_present" },
+              "normalization": {
+                "type": "boolean",
+                "true_score": 100,
+                "false_score": 30
+              }
+            },
+            {
+              "key": "runbooks_present",
+              "label": "Runbooks present",
+              "unit": "boolean",
+              "metric_weight": 0.25,
+              "source": { "path": "docs/runbook.md", "field": "exists" },
+              "normalization": {
+                "type": "boolean",
+                "true_score": 100,
+                "false_score": 40
+              }
+            },
+            {
+              "key": "adrs_present",
+              "label": "Architecture Decision Records (ADRs) present",
+              "unit": "boolean",
+              "metric_weight": 0.25,
+              "source": { "path": "repo_facts.json", "field": "governance.adrs_present" },
+              "normalization": {
+                "type": "boolean",
+                "true_score": 100,
+                "false_score": 50
+              }
+            },
+            {
+              "key": "evidence_per_build_published",
+              "label": "Evidence pack published per build",
+              "unit": "boolean",
+              "metric_weight": 0.25,
+              "source": { "path": "build/build.json", "field": "exists" },
+              "normalization": {
+                "type": "boolean",
+                "true_score": 100,
+                "false_score": 30
+              }
+            }
+          ]
+        }
+      ],
+      "output_schema": {
+        "type": "object",
+        "required": ["repo", "commit", "scores", "final_score", "generated_at"],
+        "properties": {
+          "repo": { "type": "string" },
+          "commit": { "type": "string" },
+          "generated_at": { "type": "string", "format": "date-time" },
+          "scores": {
+            "type": "object",
+            "properties": {
+              "velocity": { "type": "number" },
+              "stability": { "type": "number" },
+              "scalability": { "type": "number" },
+              "security": { "type": "number" },
+              "maintainability": { "type": "number" },
+              "bus_factor": { "type": "number" },
+              "governance": { "type": "number" }
+            }
+          },
+          "final_score": { "type": "number" },
+          "grade": { "type": "string", "enum": ["A", "B", "C", "D", "E"] },
+          "notes": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }

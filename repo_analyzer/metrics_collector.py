@@ -10,7 +10,7 @@ import json
 class MetricsCollector:
     """Collects code metrics (lines of code, files, languages)"""
     
-    # Common code file extensions
+    # Common code file extensions (excluding non-code files like YAML, JSON, Markdown, HTML, Dockerfile, text)
     CODE_EXTENSIONS = {
         # JavaScript/TypeScript
         '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs',
@@ -36,18 +36,26 @@ class MetricsCollector:
         '.scala',
         # Shell
         '.sh', '.bash', '.zsh',
-        # HTML/CSS
-        '.html', '.htm', '.css', '.scss', '.sass', '.less',
-        # Markdown
-        '.md', '.markdown',
-        # JSON/YAML
-        '.json', '.yaml', '.yml',
+        # CSS only (excluding HTML)
+        '.css', '.scss', '.sass', '.less',
         # SQL
         '.sql',
-        # XML
+        # XML (config files, not markup)
         '.xml',
-        # Config
+        # Config files (but not YAML/JSON)
         '.toml', '.ini', '.cfg', '.conf',
+    }
+    
+    # Files to exclude by name (case-insensitive)
+    EXCLUDE_FILENAMES = {
+        'dockerfile', 'docker-compose.yml', 'docker-compose.yaml',
+        'makefile', 'rakefile',
+    }
+    
+    # Exclude by extension
+    EXCLUDE_EXTENSIONS = {
+        '.yaml', '.yml', '.json', '.html', '.htm', 
+        '.md', '.markdown', '.txt', '.text',
     }
     
     # Directories to ignore (dependencies and build artifacts)
@@ -84,15 +92,21 @@ class MetricsCollector:
             # Build exclude directories list for cloc
             exclude_dirs = ','.join(sorted(self.IGNORE_DIRS))
             
+            # Build exclude extensions list for cloc (non-code files)
+            exclude_ext = ','.join(sorted([ext.lstrip('.') for ext in self.EXCLUDE_EXTENSIONS]))
+            
             # Try to run cloc with exclusions
+            cmd = [
+                'cloc', 
+                '--json', 
+                '--quiet',
+                '--exclude-dir', exclude_dirs,
+                '--exclude-ext', exclude_ext,
+                str(self.repo_path)
+            ]
+            
             result = subprocess.run(
-                [
-                    'cloc', 
-                    '--json', 
-                    '--quiet',
-                    '--exclude-dir', exclude_dirs,
-                    str(self.repo_path)
-                ],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=300,  # 5 minute timeout
@@ -213,6 +227,14 @@ class MetricsCollector:
                 if self._is_ignored_path(file_path, repo_path_normalized):
                     continue
                 
+                # Skip non-code files by extension
+                if file_path.suffix.lower() in self.EXCLUDE_EXTENSIONS:
+                    continue
+                
+                # Skip non-code files by name (case-insensitive)
+                if file_path.name.lower() in self.EXCLUDE_FILENAMES:
+                    continue
+                
                 # Check if it's a code file
                 if file_path.suffix.lower() in self.CODE_EXTENSIONS:
                     yield file_path
@@ -277,17 +299,10 @@ class MetricsCollector:
             '.sh': 'Shell',
             '.bash': 'Shell',
             '.zsh': 'Shell',
-            '.html': 'HTML',
-            '.htm': 'HTML',
             '.css': 'CSS',
             '.scss': 'SCSS',
             '.sass': 'Sass',
             '.less': 'Less',
-            '.md': 'Markdown',
-            '.markdown': 'Markdown',
-            '.json': 'JSON',
-            '.yaml': 'YAML',
-            '.yml': 'YAML',
             '.sql': 'SQL',
             '.xml': 'XML',
             '.toml': 'TOML',

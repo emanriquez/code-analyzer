@@ -164,9 +164,9 @@ def main(repo: str, out: str, upload_url: Optional[str], upload_token: Optional[
         metrics = metrics_collector.collect()
         
         # Generate summary for AI
-        from datetime import datetime
+        from datetime import datetime, timezone
         summary = {
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "repository": {
                 "name": repo_facts.get("name", "unknown"),
                 "url": repo_facts.get("url", ""),
@@ -201,10 +201,12 @@ def main(repo: str, out: str, upload_url: Optional[str], upload_token: Optional[
             openai_token=openai_token,
             gemini_token=gemini_token,
             ai_provider=ai_provider,
+            language=language,
             use_cache=not no_cache
         )
         generated_files = generator.generate(
-            stack_info, deps_info, repo_facts, security_info, quality_info, metrics, summary
+            stack_info, deps_info, repo_facts, security_info, quality_info, metrics, summary,
+            repo_name=repo_name, commit_sha=commit_sha, metrica_config_path="metrica.json"
         )
         
         if verbose:
