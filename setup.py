@@ -15,7 +15,7 @@ dependencies = [
 
 setup(
     name="repo-analyzer",
-    version="1.0.1",
+    version="1.0.2",
     description="Repository analyzer for generating evidence packs",
     packages=find_packages(),
     install_requires=dependencies,

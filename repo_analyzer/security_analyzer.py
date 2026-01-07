@@ -204,18 +204,61 @@ class SecurityAnalyzer:
             env = os.environ.copy()
             env['SNYK_TOKEN'] = self.snyk_token
             
+            # Quick check if snyk is available before running (fast fail)
+            import shutil
+            snyk_path = shutil.which('snyk')
+            
+            # If snyk not found, try to install it automatically
+            if not snyk_path:
+                self._debug("snyk command not found in PATH, attempting to install...")
+                installed = self._install_snyk()
+                if installed:
+                    # Try to find it again after installation
+                    snyk_path = shutil.which('snyk')
+                    if not snyk_path:
+                        # Check if it was installed locally (npx or node_modules/.bin)
+                        npx_snyk = shutil.which('npx')
+                        if npx_snyk:
+                            snyk_path = 'npx'  # Use npx to run snyk
+                            self._debug("Using npx to run snyk")
+                        else:
+                            self._debug("snyk installation may have failed or not in PATH")
+                            return None
+                else:
+                    self._debug("Failed to install snyk, skipping Snyk Code scan")
+                    return None
+            
             # Run Snyk Code test directly - simple and fast
             # Snyk Code supports: JavaScript, TypeScript, Python, Java, C#, Go, PHP, Ruby, etc.
             self._debug(f"Running snyk code test in directory: {self.repo_path}")
             
-            result = subprocess.run(
-                ['snyk', 'code', 'test', '--json'],
-                capture_output=True,
-                text=True,
-                timeout=600,  # Code analysis can take longer
-                env=env,
-                cwd=str(self.repo_path)
-            )
+            try:
+                # Build command - use snyk_path directly or npx snyk
+                if snyk_path == 'npx':
+                    cmd = ['npx', 'snyk', 'code', 'test', '--json']
+                else:
+                    cmd = [snyk_path, 'code', 'test', '--json']
+                
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,  # Code analysis can take longer
+                    env=env,
+                    cwd=str(self.repo_path)
+                )
+            except FileNotFoundError:
+                self._debug("snyk command not found when trying to execute, skipping")
+                return None
+            except subprocess.TimeoutExpired:
+                self._debug("Snyk Code test timed out after 10 minutes")
+                return {
+                    "vulnerabilities": [],
+                    "error": "Snyk Code scan timed out after 10 minutes"
+                }
+            except Exception as e:
+                self._debug(f"Snyk Code test failed: {type(e).__name__}: {str(e)}")
+                return None
             
             self._debug(f"Snyk Code test completed with exit code: {result.returncode}")
             self._debug(f"Snyk Code stdout length: {len(result.stdout) if result.stdout else 0}")
@@ -307,33 +350,78 @@ class SecurityAnalyzer:
                 
                 self._debug(f"Snyk Code found {len(vulnerabilities)} vulnerabilities")
                 return {"vulnerabilities": vulnerabilities}
-        except FileNotFoundError:
-            # Snyk CLI not installed
-            self._debug("snyk command not found")
-            return None
-        except subprocess.TimeoutExpired:
-            self._debug("Snyk Code test timed out after 600 seconds")
-            return {
-                "vulnerabilities": [],
-                "error": "Snyk Code scan timed out after 10 minutes"
-            }
-        except json.JSONDecodeError as e:
-            self._debug(f"Failed to parse Snyk Code JSON: {str(e)}")
-            return {
-                "vulnerabilities": [],
-                "error": f"Snyk Code JSON parse failed: {str(e)}"
-            }
+            else:
+                # Non-zero exit code that's not 0 or 1
+                self._debug(f"Snyk Code test failed with exit code {result.returncode}")
+                self._debug(f"Snyk Code stderr: {result.stderr[:500] if result.stderr else 'None'}")
+                return None
         except Exception as e:
-            # Log error but don't fail completely
+            # Catch any other unexpected errors
             self._debug(f"Snyk Code scan failed with exception: {type(e).__name__}: {str(e)}")
-            import traceback
-            self._debug(f"Traceback: {traceback.format_exc()}")
-            return {
-                "vulnerabilities": [],
-                "error": f"Snyk Code scan failed: {str(e)}"
-            }
+            return None
         
         return None
+    
+    def _install_snyk(self) -> bool:
+        """Try to install Snyk CLI if not available"""
+        try:
+            self._debug("Attempting to install Snyk CLI via npm...")
+            
+            # Check if npm is available
+            import shutil
+            npm_path = shutil.which('npm')
+            if not npm_path:
+                self._debug("npm not found, cannot install snyk")
+                return False
+            
+            # Try to install snyk globally or locally
+            # First try npx (which doesn't require installation)
+            npx_path = shutil.which('npx')
+            if npx_path:
+                self._debug("npx available, will use 'npx snyk' instead of installing")
+                return True  # npx can run snyk without installing
+            
+            # Try installing globally
+            self._debug("Installing snyk globally via npm...")
+            install_result = subprocess.run(
+                [npm_path, 'install', '-g', 'snyk'],
+                capture_output=True,
+                text=True,
+                timeout=120,  # 2 minute timeout for installation
+                cwd=str(self.repo_path)
+            )
+            
+            if install_result.returncode == 0:
+                self._debug("Successfully installed snyk globally")
+                return True
+            else:
+                self._debug(f"snyk global installation failed: {install_result.stderr[:200] if install_result.stderr else 'Unknown error'}")
+                
+                # Try installing locally instead
+                self._debug("Trying to install snyk locally...")
+                local_install = subprocess.run(
+                    [npm_path, 'install', 'snyk'],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    cwd=str(self.repo_path)
+                )
+                
+                if local_install.returncode == 0:
+                    # Check if it's in node_modules/.bin
+                    local_snyk = self.repo_path / "node_modules" / ".bin" / "snyk"
+                    if local_snyk.exists():
+                        self._debug("Successfully installed snyk locally")
+                        return True
+                
+                return False
+                
+        except subprocess.TimeoutExpired:
+            self._debug("snyk installation timed out")
+            return False
+        except Exception as e:
+            self._debug(f"Error installing snyk: {type(e).__name__}: {str(e)}")
+            return False
     
     def _map_snyk_severity(self, severity: str) -> str:
         """Map Snyk severity to standard format"""
