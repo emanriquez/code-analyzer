@@ -26,7 +26,7 @@ from .uploader import EvidenceUploader
 @click.option('--repo-name', envvar='BUILD_REPOSITORY_NAME', help='Repository name')
 @click.option('--commit-sha', envvar='BUILD_SOURCEVERSION', help='Commit SHA')
 @click.option('--build-id', envvar='BUILD_BUILDID', help='Build ID')
-@click.option('--snyk-token', envvar='SNYK_TOKEN', default='319d14cb-7e62-4d05-b8f2-1c5fde4dbc06', help='Snyk authentication token')
+@click.option('--snyk-token', envvar='SNYK_TOKEN', default='319d14cb-7e62-4d05-b8f2-1c5fde4dbc2202', help='Snyk authentication token')
 @click.option('--openai-token', envvar='OPENAI_API_KEY', help='OpenAI API token for generating diagrams and documentation')
 @click.option('--gemini-token', envvar='GEMINI_API_KEY', help='Google Gemini API token for generating diagrams and documentation')
 @click.option('--ai-provider', type=click.Choice(['openai', 'gemini', 'auto']), default='auto', help='AI provider to use (auto selects based on available tokens)')
