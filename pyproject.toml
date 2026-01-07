@@ -19,7 +19,8 @@ dependencies = [
 ]
 
 [project.scripts]
-repo-analyzer = "cli:main"
+repo-analyzer = "repo_analyzer.cli:main"
 
 [tool.setuptools]
 packages = ["repo_analyzer"]
+

@@ -347,5 +347,3 @@ Para preguntas o soporte, abre un issue en GitHub o contacta al equipo de ingeni
 ---
 
 **Hecho con ❤️ para automatizar documentación y compliance**
-
-
