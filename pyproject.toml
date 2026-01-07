@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "repo-analyzer"
+version = "0.1.0"
+description = "Repository analyzer for generating evidence packs"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "click>=8.0.0",
+    "pyyaml>=6.0",
+    "gitpython>=3.1.0",
+    "requests>=2.28.0",
+    "openai>=1.0.0",
+    "google-generativeai>=0.3.0",
+    "tomli>=2.0.0; python_version < '3.11'",  # tomllib is built-in in Python 3.11+
+]
+
+[project.scripts]
+repo-analyzer = "cli:main"
+
+[tool.setuptools]
+packages = ["repo_analyzer"]

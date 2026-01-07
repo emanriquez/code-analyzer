@@ -44,8 +44,11 @@
 git clone https://github.com/tu-org/repo-analyzer.git
 cd repo-analyzer
 
-# Instalar dependencias
+# Opción 1: Instalar como paquete editable (recomendado)
 pip install -e .
+
+# Opción 2: Instalar solo las dependencias desde requirements.txt
+pip install -r requirements.txt
 ```
 
 ### Instalación con Dependencias de IA
@@ -344,4 +347,5 @@ Para preguntas o soporte, abre un issue en GitHub o contacta al equipo de ingeni
 ---
 
 **Hecho con ❤️ para automatizar documentación y compliance**
+
 
