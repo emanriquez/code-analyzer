@@ -105,8 +105,14 @@ def main(repo: str, out: str, upload_url: Optional[str], upload_token: Optional[
         if verbose:
             click.echo("Running security analysis...")
         try:
-            security_analyzer = SecurityAnalyzer(str(repo_path), snyk_token=snyk_token)
+            security_analyzer = SecurityAnalyzer(str(repo_path), snyk_token=snyk_token, verbose=verbose)
             security_info = security_analyzer.analyze(deps_info, stack_info)
+            
+            # Print debug logs if available
+            if verbose and security_info.get("debug_logs"):
+                click.echo("  Debug logs:")
+                for log in security_info.get("debug_logs", []):
+                    click.echo(f"    {log}")
             
             if verbose and snyk_token:
                 click.echo(f"  Snyk Code token: {'configured' if snyk_token else 'not provided'}")

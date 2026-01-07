@@ -50,13 +50,19 @@ class MetricsCollector:
         '.toml', '.ini', '.cfg', '.conf',
     }
     
-    # Directories to ignore
+    # Directories to ignore (dependencies and build artifacts)
     IGNORE_DIRS = {
         'node_modules', '.git', '__pycache__', '.venv', 'venv', 'env',
         'dist', 'build', '.next', '.nuxt', 'coverage', '.nyc_output',
         'target', 'bin', 'obj', '.idea', '.vscode', '.vs',
         'vendor', 'bower_components', '.pytest_cache', '.mypy_cache',
-        '.tox', '.eggs', '*.egg-info', '.sass-cache', '.cache',
+        '.tox', '.eggs', '.sass-cache', '.cache',
+        'package-lock.json', 'yarn.lock', 'pip-logs', 'pip_cache',
+        'site-packages', 'lib64', 'include', 'share',
+        '.mypy_cache', '.pytest_cache', '.ruff_cache',
+        'pods', '.cocoapods', 'DerivedData', 'Pods',
+        '.gradle', '.mvn', 'gradle', 'maven',
+        'jspm_packages', '.npm', '.yarn',
     }
     
     def __init__(self, repo_path: str):
@@ -75,9 +81,18 @@ class MetricsCollector:
     def _try_cloc(self) -> Optional[Dict[str, Any]]:
         """Try to use cloc tool if available"""
         try:
-            # Try to run cloc
+            # Build exclude directories list for cloc
+            exclude_dirs = ','.join(sorted(self.IGNORE_DIRS))
+            
+            # Try to run cloc with exclusions
             result = subprocess.run(
-                ['cloc', '--json', '--quiet', str(self.repo_path)],
+                [
+                    'cloc', 
+                    '--json', 
+                    '--quiet',
+                    '--exclude-dir', exclude_dirs,
+                    str(self.repo_path)
+                ],
                 capture_output=True,
                 text=True,
                 timeout=300,  # 5 minute timeout
@@ -172,20 +187,64 @@ class MetricsCollector:
     
     def _walk_code_files(self):
         """Walk through repository and yield code files"""
+        # Normalize repo path for comparison
+        repo_path_normalized = self.repo_path.resolve()
+        
         for root, dirs, files in os.walk(self.repo_path):
-            # Filter out ignored directories
-            dirs[:] = [d for d in dirs if d not in self.IGNORE_DIRS and not d.startswith('.')]
+            root_path = Path(root).resolve()
+            
+            # Skip if current directory is in ignored path
+            if self._is_ignored_path(root_path, repo_path_normalized):
+                dirs[:] = []  # Don't descend into ignored directories
+                continue
+            
+            # Filter out ignored directories from dirs list
+            dirs[:] = [
+                d for d in dirs 
+                if d not in self.IGNORE_DIRS 
+                and not d.startswith('.')
+                and not self._is_ignored_path(root_path / d, repo_path_normalized)
+            ]
             
             for file in files:
-                file_path = Path(root) / file
+                file_path = root_path / file
                 
                 # Skip if in ignored directory
-                if any(ignore in str(file_path) for ignore in self.IGNORE_DIRS):
+                if self._is_ignored_path(file_path, repo_path_normalized):
                     continue
                 
                 # Check if it's a code file
                 if file_path.suffix.lower() in self.CODE_EXTENSIONS:
                     yield file_path
+    
+    def _is_ignored_path(self, path: Path, repo_root: Path) -> bool:
+        """Check if a path should be ignored (is in an ignored directory)"""
+        try:
+            # Get relative path from repo root
+            relative_path = path.relative_to(repo_root)
+            
+            # Check all directory parts of the path
+            # For files, exclude the filename (last part)
+            # For directories, check all parts
+            parts = relative_path.parts
+            
+            # If it's a file (has a suffix), only check parent directories
+            if path.suffix:
+                parts = parts[:-1]
+            
+            # Check each directory in the path
+            for part in parts:
+                # Check if part matches any ignored directory
+                if part in self.IGNORE_DIRS:
+                    return True
+                # Also ignore directories starting with dot (like .git, .venv, etc.)
+                if part.startswith('.'):
+                    return True
+            
+            return False
+        except (ValueError, OSError):
+            # Path is not relative to repo root or can't be checked
+            return True
     
     def _detect_language(self, file_path: Path) -> Optional[str]:
         """Detect programming language from file extension"""

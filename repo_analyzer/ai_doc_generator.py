@@ -83,6 +83,46 @@ class AIDocGenerator:
                 raise ValueError("Gemini provider selected but no Gemini token provided")
             genai.configure(api_key=self.gemini_token)
             self.gemini_client = genai.GenerativeModel('gemini-pro')
+        
+        # Load existing README if available
+        self.existing_readme = self._get_existing_readme()
+    
+    def _get_existing_readme(self) -> Optional[str]:
+        """Get existing README content if available in the repository root"""
+        readme_paths = [
+            self.repo_path / "README.md",
+            self.repo_path / "readme.md",
+            self.repo_path / "README.txt",
+            self.repo_path / "README.rst",
+        ]
+        
+        for readme_path in readme_paths:
+            if readme_path.exists() and readme_path.is_file():
+                try:
+                    with open(readme_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read().strip()
+                        if content:  # Only return if not empty
+                            return content
+                except Exception:
+                    # If can't read, try next path
+                    continue
+        
+        return None
+    
+    def _get_readme_context(self) -> str:
+        """Get README context to include in prompts"""
+        if self.existing_readme:
+            # Limit README content to avoid token limits (keep first 3000 chars)
+            readme_preview = self.existing_readme[:3000]
+            if len(self.existing_readme) > 3000:
+                readme_preview += "\n\n[... contenido del README truncado ...]"
+            return f"""
+
+=== EXISTING PROJECT README (use this as primary context to understand what the system does) ===
+{readme_preview}
+=== END OF README ===
+"""
+        return ""
     
     def generate_diagrams(self, stack_info: Dict, deps_info: Dict, repo_facts: Dict, 
                          metrics: Dict, summary: Dict) -> Dict[str, str]:
@@ -273,11 +313,14 @@ class AIDocGenerator:
                                      repo_facts: Dict, summary: Dict) -> str:
         """Generate C4 Context diagram in Mermaid format"""
         system_prompt = """You are an expert software architect. Generate C4 Context diagrams in Mermaid format.
-The diagram should show the system in context with external users and systems."""
+The diagram should show the system in context with external users and systems.
+Use the existing README to understand what the system does and its purpose."""
         
         lang_instruction = self._get_language_instruction()
+        readme_context = self._get_readme_context()
         
         prompt = f"""{lang_instruction}
+{readme_context}
 
 Generate a C4 Context diagram in Mermaid format for this software system:
 
@@ -289,6 +332,9 @@ Runtime: {stack_info.get('runtime', 'Unknown')}
 
 Dependencies: {deps_info.get('total_dependencies', 0)} total dependencies
 Main Dependencies: {', '.join([d.get('name', '') for d in deps_info.get('dependencies', [])[:10]])}
+
+IMPORTANT: Use the existing README above to understand what this system does, its purpose, and main features.
+This will help you create an accurate context diagram that reflects the actual system functionality.
 
 Generate ONLY the Mermaid diagram code, starting with ```mermaid and ending with ```.
 The diagram should follow C4 Context level conventions showing:
@@ -306,11 +352,14 @@ Use proper Mermaid syntax for C4 diagrams."""
                                        repo_facts: Dict, metrics: Dict, summary: Dict) -> str:
         """Generate C4 Container diagram in Mermaid format"""
         system_prompt = """You are an expert software architect. Generate C4 Container diagrams in Mermaid format.
-The diagram should show the containers (applications, databases, etc.) within the system."""
+The diagram should show the containers (applications, databases, etc.) within the system.
+Use the existing README to understand what the system does and its architecture."""
         
         lang_instruction = self._get_language_instruction()
+        readme_context = self._get_readme_context()
         
         prompt = f"""{lang_instruction}
+{readme_context}
 
 Generate a C4 Container diagram in Mermaid format for this software system:
 
@@ -326,6 +375,9 @@ Languages: {', '.join(list(metrics.get('languages', {}).keys())[:5])}
 
 Key Dependencies:
 {json.dumps([d.get('name', '') for d in deps_info.get('dependencies', [])[:15]], indent=2)}
+
+IMPORTANT: Use the existing README above to understand what this system does and its main components.
+This will help you create an accurate container diagram that reflects the actual system architecture.
 
 Generate ONLY the Mermaid diagram code, starting with ```mermaid and ending with ```.
 The diagram should follow C4 Container level conventions showing:
@@ -343,11 +395,14 @@ Use proper Mermaid syntax for C4 diagrams."""
                                   repo_facts: Dict, summary: Dict) -> Dict[str, Any]:
         """Generate Sequence diagram in PlantUML format"""
         system_prompt = """You are an expert software architect. Generate sequence diagrams in PlantUML format.
-The diagram should show interactions between system components."""
+The diagram should show interactions between system components.
+Use the existing README to understand what the system does and its workflows."""
         
         lang_instruction = self._get_language_instruction()
+        readme_context = self._get_readme_context()
         
         prompt = f"""{lang_instruction}
+{readme_context}
 
 Generate a sequence diagram in PlantUML format for this software system:
 
@@ -358,6 +413,9 @@ Runtime: {stack_info.get('runtime', 'Unknown')}
 
 Key Dependencies:
 {json.dumps([d.get('name', '') for d in deps_info.get('dependencies', [])[:15]], indent=2)}
+
+IMPORTANT: Use the existing README above to understand what this system does and its main workflows.
+This will help you create an accurate sequence diagram that reflects the actual system interactions.
 
 Generate ONLY the PlantUML diagram code, starting with @startuml and ending with @enduml.
 The diagram should show:
@@ -405,12 +463,31 @@ Use proper PlantUML syntax for sequence diagrams."""
                                   summary: Dict) -> str:
         """Generate enriched README with AI"""
         lang_instruction = self._get_language_instruction()
+        readme_context = self._get_readme_context()
         
         system_prompt = f"""You are a technical writer. Generate comprehensive, professional README documentation
 for software projects. Include all relevant sections with clear, concise information.
+Use the existing README as a base and enhance it with additional technical details.
 {lang_instruction}"""
         
-        prompt = f"""Generate a comprehensive README.md for this software project:
+        if readme_context:
+            readme_base_instruction = """
+IMPORTANT: An existing README is provided below. Use it as the foundation and enhance it with:
+- Additional technical details discovered from the codebase analysis
+- Missing sections that should be in a comprehensive README
+- Updated or more detailed information where needed
+- Keep the original tone and style when possible
+"""
+        else:
+            readme_base_instruction = """
+IMPORTANT: No existing README found. Generate a complete README from scratch based on the available information.
+"""
+        
+        prompt = f"""{lang_instruction}
+{readme_context}
+{readme_base_instruction}
+
+Generate a comprehensive README.md for this software project:
 
 Repository: {repo_facts.get('name', 'Unknown')}
 Description: {repo_facts.get('url', 'No description available')}
@@ -454,12 +531,17 @@ Make it professional, clear, and comprehensive."""
                           metrics: Dict, summary: Dict) -> str:
         """Generate operational runbook"""
         lang_instruction = self._get_language_instruction()
+        readme_context = self._get_readme_context()
         
         system_prompt = f"""You are a DevOps engineer. Generate operational runbooks for software systems.
 Include deployment, monitoring, troubleshooting, and maintenance procedures.
+Use the existing README to understand what the system does and its operational requirements.
 {lang_instruction}"""
         
-        prompt = f"""Generate an operational runbook for this software system:
+        prompt = f"""{lang_instruction}
+{readme_context}
+
+Generate an operational runbook for this software system:
 
 Repository: {repo_facts.get('name', 'Unknown')}
 Tech Stack:
@@ -467,6 +549,9 @@ Tech Stack:
 - Frameworks: {', '.join(stack_info.get('frameworks', []))}
 - Package Manager: {stack_info.get('package_manager', 'Unknown')}
 - Runtime: {stack_info.get('runtime', 'Unknown')}
+
+IMPORTANT: Use the existing README above to understand what this system does, its purpose, and operational needs.
+This will help you create a practical runbook that reflects the actual system requirements.
 
 Generate a comprehensive runbook with:
 1. System Overview
@@ -488,12 +573,17 @@ Make it practical and actionable for operations teams."""
                                    metrics: Dict, summary: Dict) -> str:
         """Generate architecture documentation"""
         lang_instruction = self._get_language_instruction()
+        readme_context = self._get_readme_context()
         
         system_prompt = f"""You are a software architect. Generate comprehensive architecture documentation
 that explains system design, components, and technical decisions.
+Use the existing README to understand what the system does and its architectural purpose.
 {lang_instruction}"""
         
-        prompt = f"""Generate architecture documentation for this software system:
+        prompt = f"""{lang_instruction}
+{readme_context}
+
+Generate architecture documentation for this software system:
 
 Repository: {repo_facts.get('name', 'Unknown')}
 Tech Stack:
@@ -508,6 +598,9 @@ Code Metrics:
 
 Key Dependencies:
 {json.dumps([d.get('name', '') for d in deps_info.get('dependencies', [])[:20]], indent=2)}
+
+IMPORTANT: Use the existing README above to understand what this system does, its purpose, and main features.
+This will help you create accurate architecture documentation that reflects the actual system design and purpose.
 
 Generate comprehensive architecture documentation with:
 1. System Overview
