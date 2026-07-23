@@ -3,7 +3,7 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**Repo Analyzer** es una herramienta CLI en Python que analiza repositorios de código y genera evidence packs estandarizados para documentación técnica, compliance y due diligence de VC.
+**Repo Analyzer** es una herramienta CLI en Python que analiza un repositorio de código y genera un **evidence pack** estandarizado: métricas, dependencias, seguridad, calidad, historial, documentación generada con IA y un **score de madurez de ingeniería (0-100)**, listo para due diligence de VC, compliance o auditorías técnicas.
 
 ## 🚀 Características
 
@@ -14,35 +14,87 @@
 - **Package Managers**: npm, yarn, pnpm, pip, pipenv, poetry
 
 ### 📊 Análisis Completo
-- **Métricas de código**: Líneas de código, archivos, desglose por lenguajes
-- **Dependencias**: Parseo completo de dependencias y lockfiles
-- **Seguridad**: Análisis SAST (Snyk Code) y SCA (npm audit, safety, pip-audit)
-- **Calidad**: Ejecución automática de tests y recolección de cobertura
-- **Historial**: Extracción de commits, tags y generación de changelog
+- **Métricas de código**: líneas de código, archivos, desglose por lenguaje
+- **Dependencias**: parseo completo de dependencias y lockfiles
+- **Seguridad**: SAST (Snyk Code) y SCA (npm audit, safety, pip-audit)
+- **Calidad**: ejecución automática de tests y recolección de cobertura
+- **Historial**: extracción de commits, tags y generación de changelog
+
+### 🎯 VC-Ready Engineering Score
+- Calcula un score de **0 a 100** ponderando 7 dimensiones: *velocity, stability, scalability, security, maintainability, bus factor* y *governance*.
+- Los pesos y las métricas de cada dimensión se definen en [`metrica.json`](metrica.json) — ajustables sin tocar código.
+- Resultado guardado en `score.json` dentro del evidence pack.
 
 ### 🤖 Documentación con IA
-- **Diagramas C4**: Context y Container diagrams en Mermaid
+- **Diagramas C4**: Context y Container en Mermaid
 - **Diagramas de secuencia**: PlantUML con renderizado automático
-- **Documentación**: README, Runbook y Architecture docs generados con OpenAI o Gemini
-- **Multi-idioma**: Soporte para español, inglés, francés, alemán y más
+- **Documentación**: README enriquecido, Runbook y Architecture docs generados con OpenAI o Gemini
+- **Multi-idioma**: español, inglés, francés, alemán y más
+- **Cache local**: evita regenerar contenido de IA entre corridas (desactivable con `--no-cache`)
 
 ### ☁️ Integración Cloud
-- **Upload automático**: Subida del evidence pack a plataformas externas
+- **Upload automático** del evidence pack a plataformas externas
 - **Métodos**: ZIP (recomendado) o archivos individuales
-- **Autenticación**: Bearer, SAS o custom headers
+- **Autenticación**: Bearer, SAS o header custom
+
+## 🏗️ Arquitectura
+
+`cli.py` orquesta un pipeline de módulos independientes. Cada módulo recibe la ruta del repo (y, en algunos casos, la salida del paso anterior) y devuelve datos estructurados; `EvidenceGenerator` junta todo y escribe el evidence pack en disco.
+
+```
+                         ┌────────────────────┐
+                         │   repo_analyzer.py  │  ← entry point
+                         │   (cli.py: main)     │
+                         └──────────┬──────────┘
+                                    │
+   1. StackDetector ────────────────┤  detecta lenguaje, frameworks, package manager
+   2. DependencyParser ─────────────┤  parsea dependencias y lockfiles
+   3. RepoFactsCollector ───────────┤  metadata de git (nombre, commit, remoto)
+   4. SecurityAnalyzer ─────────────┤  SAST (Snyk) + SCA (npm audit / safety / pip-audit)
+   5. QualityAnalyzer ──────────────┤  corre tests y recolecta cobertura
+   6. MetricsCollector ─────────────┤  LOC y desglose por lenguaje
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │   EvidenceGenerator    │  orquesta el resto y escribe /out
+                         └──────────┬───────────┘
+                        ┌───────────┼───────────────┐
+                        ▼           ▼               ▼
+                 AIDocGenerator  ScoringSystem   EvidenceUploader
+                 (docs + diagramas   (score.json      (opcional, sube
+                  vía OpenAI/Gemini,  vía metrica.json) el evidence pack)
+                  con CacheManager)
+```
+
+### Módulos (`repo_analyzer/`)
+
+| Módulo | Responsabilidad |
+|--------|------------------|
+| `cli.py` | Punto de entrada CLI (Click). Orquesta el pipeline paso a paso. |
+| `stack_detector.py` | Detecta lenguaje principal, frameworks, package manager, TypeScript, mobile. |
+| `dependency_parser.py` | Parsea `package.json`, `requirements.txt`, lockfiles, etc. |
+| `repo_facts.py` | Extrae metadata del repo vía git (nombre, commit SHA, remoto, tags). |
+| `security_analyzer.py` | SAST con Snyk Code (requiere `SNYK_TOKEN`) y SCA con npm audit / safety / pip-audit. |
+| `quality_analyzer.py` | Detecta el framework de testing, corre la suite y recolecta cobertura. |
+| `metrics_collector.py` | Cuenta líneas de código y arma el desglose por lenguaje. |
+| `evidence_generator.py` | Arma el evidence pack completo (JSON, docs, diagramas, checksums). |
+| `ai_doc_generator.py` | Genera docs (README/runbook/architecture) y diagramas C4/secuencia vía OpenAI o Gemini. |
+| `scoring_system.py` | Calcula el VC-Ready Engineering Score a partir de `metrica.json`. |
+| `cache_manager.py` | Cachea en disco las respuestas de IA para no regenerarlas en cada corrida. |
+| `uploader.py` | Sube el evidence pack (zip o archivo por archivo) a una plataforma externa. |
 
 ## 📦 Instalación
 
 ### Requisitos
 - Python 3.8 o superior
-- Git (para análisis de historial)
+- Git (para análisis de historial y metadata del repo)
 
 ### Instalación Básica
 
 ```bash
 # Clonar el repositorio
-git clone https://github.com/tu-org/repo-analyzer.git
-cd repo-analyzer
+git clone https://github.com/emanriquez/code-analyzer.git
+cd code-analyzer
 
 # Opción 1: Instalar como paquete editable (recomendado)
 pip install -e .
@@ -51,9 +103,11 @@ pip install -e .
 pip install -r requirements.txt
 ```
 
+Ambas opciones exponen el comando `repo-analyzer` (vía entry point) y el script `repo_analyzer.py` en la raíz del proyecto — puedes usar cualquiera de los dos indistintamente.
+
 ### Instalación con Dependencias de IA
 
-Las dependencias de OpenAI y Gemini se instalan automáticamente. Si solo necesitas una:
+`openai` y `google-generativeai` se instalan automáticamente con `pip install -e .`. Si solo necesitas uno de los dos proveedores:
 
 ```bash
 # Solo OpenAI
@@ -73,11 +127,15 @@ python repo_analyzer.py --repo /path/to/repo --out ./evidence
 
 ### Con Análisis de Seguridad
 
+El token de Snyk **no** tiene valor por defecto — debes pasarlo explícitamente o vía variable de entorno:
+
 ```bash
+export SNYK_TOKEN=tu-snyk-token   # o pásalo con --snyk-token
+
 python repo_analyzer.py \
   --repo /path/to/repo \
   --out ./evidence \
-  --snyk-token tu-snyk-token
+  --snyk-token $SNYK_TOKEN
 ```
 
 ### Con Generación de Documentación IA
@@ -152,36 +210,37 @@ evidence/
 ├── summary.json                    # Resumen ejecutivo
 ├── dependencies.json               # Dependencias parseadas
 ├── repo_facts.json                 # Metadatos del repositorio
+├── score.json                      # VC-Ready Engineering Score (según metrica.json)
 ├── SHA256SUMS                      # Checksums de integridad
 │
 ├── metrics/
 │   ├── cloc.json                   # Métricas de código
-│   └── languages.json               # Desglose por lenguajes
+│   └── languages.json              # Desglose por lenguajes
 │
 ├── quality/
-│   ├── tests.json                   # Resultados de tests
-│   └── coverage-summary.json        # Cobertura de código
+│   ├── tests.json                  # Resultados de tests
+│   └── coverage-summary.json       # Cobertura de código
 │
 ├── security/
 │   └── deps-sca.json               # Análisis de vulnerabilidades
 │
 ├── change/
-│   ├── commits.json                 # Historial de commits
-│   └── changelog.md                 # Changelog en Markdown
+│   ├── commits.json                # Historial de commits
+│   └── changelog.md                # Changelog en Markdown
 │
 ├── docs/
-│   ├── README.enriched.md           # README generado con IA
-│   ├── runbook.md                   # Runbook operacional
-│   └── architecture.md              # Documentación de arquitectura
+│   ├── README.enriched.md          # README generado con IA
+│   ├── runbook.md                  # Runbook operacional
+│   └── architecture.md             # Documentación de arquitectura
 │
 ├── diagrams/
 │   ├── c4_context.mmd              # Diagrama C4 Context
 │   ├── c4_container.mmd            # Diagrama C4 Container
-│   ├── sequence.puml               # Diagrama de secuencia
+│   ├── sequence.puml                # Diagrama de secuencia
 │   └── sequence.png                # (Opcional) Imagen renderizada
 │
 └── build/
-    └── build.json                   # Información del build
+    └── build.json                  # Información del build
 ```
 
 ## 🔧 Opciones de Línea de Comandos
@@ -206,7 +265,7 @@ evidence/
 
 | Opción | Descripción |
 |--------|-------------|
-| `--snyk-token` | Token de Snyk para análisis de código |
+| `--snyk-token` | Token de Snyk para análisis de código (sin default, usar env var o flag) |
 
 ### IA y Documentación
 
@@ -241,36 +300,39 @@ export EVIDENCE_UPLOAD_TOKEN=tu-token
 python repo_analyzer.py --repo . --out ./evidence
 ```
 
-## 🏗️ Arquitectura del Módulo
+## 🎯 VC-Ready Engineering Score
 
-```
-repo_analyzer/
-├── __init__.py              # Inicialización del módulo
-├── cli.py                   # Punto de entrada CLI
-├── stack_detector.py        # Detección de tech stack
-├── dependency_parser.py     # Parseo de dependencias
-├── metrics_collector.py     # Recolección de métricas
-├── security_analyzer.py     # Análisis de seguridad
-├── quality_analyzer.py      # Análisis de calidad/tests
-├── repo_facts.py            # Metadatos del repositorio
-├── evidence_generator.py    # Generación del evidence pack
-├── ai_doc_generator.py      # Generación con IA
-├── cache_manager.py         # Gestión de cache
-└── uploader.py              # Upload a plataformas externas
-```
+`metrica.json` define el modelo de scoring: 7 dimensiones (`velocity`, `stability`, `scalability`, `security`, `maintainability`, `bus_factor`, `governance`), cada una con su propio peso y su propia lista de métricas ponderadas. `ScoringSystem` lee ese archivo, cruza las métricas disponibles en el evidence pack (tests, cobertura, vulnerabilidades, dependencias, actividad de commits, etc.) y calcula un score final de 0 a 100, guardado en `score.json`.
+
+Puedes ajustar pesos o agregar métricas editando `metrica.json` sin tocar el código de `scoring_system.py`.
 
 ## 🔐 Seguridad
 
 - Los tokens nunca se imprimen en logs (solo se muestra "configured" en verbose)
-- Los tokens se pasan como variables de entorno o parámetros
+- Los tokens se pasan como variables de entorno o parámetros — **no hay tokens hardcodeados en el código**
 - Soporte para múltiples métodos de autenticación
-- Checksums SHA256 para verificación de integridad
+- Checksums SHA256 para verificación de integridad del evidence pack
 
 ## 🚀 Integración con CI/CD
 
-### Azure DevOps
+### GitHub Actions
 
-Ver [AZURE_DEVOPS_SETUP.md](../AZURE_DEVOPS_SETUP.md) para guía completa.
+```yaml
+- name: Generate Evidence Pack
+  run: |
+    pip install git+https://github.com/emanriquez/code-analyzer.git
+    python -m repo_analyzer.cli \
+      --repo . \
+      --out ./evidence \
+      --repo-name ${{ github.repository }} \
+      --commit-sha ${{ github.sha }} \
+      --snyk-token ${{ secrets.SNYK_TOKEN }} \
+      --openai-token ${{ secrets.OPENAI_API_KEY }} \
+      --language es \
+      --verbose
+```
+
+### Azure DevOps
 
 ```yaml
 - task: UsePythonVersion@0
@@ -278,7 +340,7 @@ Ver [AZURE_DEVOPS_SETUP.md](../AZURE_DEVOPS_SETUP.md) para guía completa.
     versionSpec: '3.11'
 
 - script: |
-    pip install git+https://dev.azure.com/org/repo-analyzer/_git/repo-analyzer
+    pip install git+https://github.com/emanriquez/code-analyzer.git
   displayName: 'Install repo-analyzer'
 
 - script: |
@@ -294,32 +356,6 @@ Ver [AZURE_DEVOPS_SETUP.md](../AZURE_DEVOPS_SETUP.md) para guía completa.
   displayName: 'Generate evidence pack'
 ```
 
-### GitHub Actions
-
-```yaml
-- name: Generate Evidence Pack
-  run: |
-    pip install git+https://github.com/tu-org/repo-analyzer.git
-    python -m repo_analyzer.cli \
-      --repo . \
-      --out ./evidence \
-      --repo-name ${{ github.repository }} \
-      --commit-sha ${{ github.sha }} \
-      --snyk-token ${{ secrets.SNYK_TOKEN }} \
-      --openai-token ${{ secrets.OPENAI_API_KEY }} \
-      --language es \
-      --verbose
-```
-
-## 📚 Documentación Adicional
-
-- [Guía de Seguridad](../SECURITY.md) - Análisis de vulnerabilidades
-- [Guía de Calidad](../QUALITY.md) - Tests y cobertura
-- [Documentación IA](../AI_DOCS.md) - Generación con IA
-- [Guía de Upload](../UPLOAD.md) - Upload a plataformas externas
-- [Integración Servidor](../INTEGRATION_SERVER.md) - Para plataformas receptoras
-- [Setup Azure DevOps](../AZURE_DEVOPS_SETUP.md) - Integración con Azure
-
 ## 🤝 Contribuir
 
 Las contribuciones son bienvenidas. Por favor:
@@ -332,7 +368,7 @@ Las contribuciones son bienvenidas. Por favor:
 
 ## 📝 Licencia
 
-Este proyecto está bajo la Licencia MIT. Ver el archivo `LICENSE` para más detalles.
+Este proyecto está bajo la Licencia MIT.
 
 ## 🙏 Agradecimientos
 
@@ -342,7 +378,7 @@ Este proyecto está bajo la Licencia MIT. Ver el archivo `LICENSE` para más det
 
 ## 📧 Contacto
 
-Para preguntas o soporte, abre un issue en GitHub o contacta al equipo de ingeniería.
+Para preguntas o soporte, abre un issue en GitHub.
 
 ---
 
